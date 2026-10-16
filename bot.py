@@ -7,27 +7,44 @@ bot = telebot.TeleBot(TOKEN)
 
 # --- SOZLAMALAR ---
 ADMIN_ID = 8731925710
-CHANNEL_USERNAME = "@vexor_kino"
-# Ma'lumotlar (vaqtinchalik xotirada saqlash uchun)
+
+# Majburiy obuna uchun kanallar ro'yxati (boshlang'ich bitta kanal bilan)
+channels = ["@vexor_kino"]
+
+# Kinolar bazasi va foydalanuvchilar hisoblagichi
 movies = {}
-user_count = 150  # Misol uchun foydalanuvchilar soni
+user_count = 1
 
 def check_sub(user_id):
-    """Kanalga a'zolikni tekshirish"""
-    try:
-        member = bot.get_chat_member(CHANNEL_USERNAME, user_id)
-        if member.status in ['creator', 'administrator', 'member']:
-            return True
-        return False
-    except Exception:
-        return True
+    """Foydalanuvchi barcha majburiy kanallarga a'zo bo'lganini tekshirish"""
+    for channel in channels:
+        try:
+            member = bot.get_chat_member(channel, user_id)
+            if member.status not in ['creator', 'administrator', 'member']:
+                return False
+        except Exception:
+            # Agar bot kanalda admin bo'lmasa yoki xatolik bo'lsa, o'tkazib yuboradi
+            pass
+    return True
+
+def get_channels_text():
+    if not channels:
+        return "Hozircha ulangan kanallar yo'q."
+    text = "📢 Ulangan majburiy obuna kanallari:\n"
+    for i, ch in enumerate(channels, 1):
+        text += f"{i}. {ch}\n"
+    return text
 
 @bot.message_handler(commands=["start"])
 def start(message):
+    global user_count
+    user_count += 1
+    
     if not check_sub(message.from_user.id):
+        ch_list = "\n".join([f"👉 {ch}" for ch in channels])
         bot.reply_to(
             message,
-            f"🎬 Botdan foydalanish uchun avval kanalimizga a'zo bo'ling:\n\n👉 {CHANNEL_USERNAME}\n\nA'zo bo'lgach, /start ni bosing."
+            f"🎬 Botdan foydalanish uchun avval quyidagi kanallarga a'zo bo'ling:\n\n{ch_list}\n\nA'zo bo'lgach, qayta /start ni bosing."
         )
         return
 
@@ -42,7 +59,7 @@ def admin_panel(message):
         bot.reply_to(message, "⛔ Siz admin emassiz!")
         return
 
-    # Tugmalarni yaratish (Rasmga o'xshash menyu)
+    # Tugmalarni yaratish
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     btn_stat = types.KeyboardButton("📊 Statistika")
     btn_movies = types.KeyboardButton("🎬 Kinolar")
@@ -58,53 +75,38 @@ def admin_panel(message):
     )
 
 @bot.message_handler(func=lambda message: True)
-def handle_messages(message):
-    text = message.text
+def handle_all_messages(message):
+    text = message.text.strip()
+    user_id = message.from_user.id
 
-    # Admin tugmalari boshqaruvi
-    if message.from_user.id == ADMIN_ID:
+    # 1. Admin tugmalari va buyruqlari boshqaruvi
+    if user_id == ADMIN_ID:
         if text == "📊 Statistika":
             stat_text = (
                 f"📈 Bot statistikasi:\n\n"
                 f"👥 Foydalanuvchilar: {user_count} ta\n"
                 f"🎬 Kinolar soni: {len(movies)} ta\n"
+                f"📢 Kanallar soni: {len(channels)} ta\n"
                 f"🤖 Bot: @{bot.get_me().username}"
             )
             bot.reply_to(message, stat_text, parse_mode="Markdown")
             return
 
         elif text == "🎬 Kinolar":
-            bot.reply_to(message, "🎬 Kino qo'shish uchun quyidagi formatni yuboring:\n/add_kino KOD KINO_NOMI", parse_mode="Markdown")
+            bot.reply_to(
+                message,
+                "🎬 Kino qo'shish uchun quyidagi formatda yuboring:\n"
+                "/addkino KOD KINO_NOMI\n\n"
+                "Masalan:\n"
+                "/addkino 17 Tutqunlikda",
+                parse_mode="Markdown"
+            )
             return
 
         elif text == "📢 Kanallar":
-            bot.reply_to(message, f"📢 Ulangan majburiy obuna kanali:\n{CHANNEL_USERNAME}")
-            return
-
-        elif text == "✉️ Xabar yuborish":
-            bot.reply_to(message, "Hozircha bu funksiya ishlab chiqilmoqda.")
-            return
-
-    # Oddiy kino qidirish yoki qo'shish logikasi
-    if text.startswith("/add_kino") and message.from_user.id == ADMIN_ID:
-        try:
-            args = text.split(maxsplit=2)
-            kino_code = args[1]
-            kino_content = args[2]
-            movies[kino_code] = kino_content
-            bot.reply_to(message, f"✅ Kino saqlandi!\nKod: {kino_code}")
-        except Exception:
-            bot.reply_to(message, "⚠️ Xato format! Masalan: /add_kino 123 MFY", parse_mode="Markdown")
-        return
-
-    if not check_sub(message.from_user.id):
-        bot.reply_to(message, f"⛔ Avval kanalga a'zo bo'ling: {CHANNEL_USERNAME}")
-        return
-
-    kino_code = text.strip()
-    if kino_code in movies:
-        bot.reply_to(message, f"🎬 Siz qidirgan kino:\n\n{movies[kino_code]}")
-    else:
-        bot.reply_to(message, "❌ Ushbu kod bo'yicha kino topilmadi.")
-
-bot.infinity_polling()
+            ch_msg = (
+                f"{get_channels_text()}\n\n"
+                f"➕ Kanal qo'shish uchun:\n/addkanal @username\n\n"
+                f"➖ Kanalni o'chirish uchun:\n/delkanal @username"
+            )
+            bot.reply_to(message
